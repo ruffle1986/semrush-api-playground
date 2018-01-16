@@ -1,92 +1,72 @@
 require('dotenv').config();
-const { exec } = require('child_process');
 const debug = require('debug')('seo-content-template');
+const exec = require('../utils/exec')(process.env.SEMRUSH_API_KEY);
+const sleep = require('../utils/sleep');
 
-const initUrl = 'https://www.semrush.com/seoideas/api/sct/checks';
-const pingUrl = 'https://www.semrush.com/seoideas/api/sct/checks/status';
-const keywords = (process.argv[2] || '').split(',').map(k => k.trim().split('+').join(' '));
-const apiKey = process.env.SEMRUSH_API_KEY;
+const baseUrl = 'https://www.semrush.com/seoideas/api/sct/checks';
+const initUrl = baseUrl;
+const pingUrl = `${baseUrl}/status`;
+const finalUrl = processId => `${baseUrl}/${processId}/ideas`;
 
-if (!apiKey) {
-  throw new Error('The semrush api key must be provided.');
+function launch() {
+  debug('start collectig ideas.');
+  return exec(initUrl, {
+    keywords: (process.argv[2] || '').split(',').map(k => k.trim().split('+').join(' ')),
+    language: 'en',
+    location: 'United States',
+    country: 'us',
+    device: 'desktop',
+  });
 }
 
-const params = {
-  keywords,
-  language: 'en',
-  location: 'United States',
-  country: 'us',
-  device: 'desktop',
-};
-
-function ping() {
-  exec([
-
-    'curl -H "Content-Type: application/json"',
-    `${pingUrl}?key=${apiKey}`,
-
-  ].join(' '), (err, data) => {
-    if (err) {
-      throw err;
-    }
-    try {
-      const response = JSON.parse(data);
-      if (response.status === 'RUNNING') {
-        // try it with async/await and while loop
-        debug('ping.');
-        ping();
-      } else {
-        debug('collecting ideas is done.');
-        const pid = response.id;
-
-        /* Get the ideas finally  */
-        debug('get the final result');
-        exec([
-          'curl -H "Content-Type: application/json"',
-          `https://www.semrush.com/seoideas/api/sct/checks/${pid}/ideas?key=${apiKey}`,
-        ].join(' '), (err3, data2) => {
-          if (err3) {
-            throw err3;
-          }
-          debug('got the final result');
-          try {
-            const { ideas, serps } = JSON.parse(data2);
-            const recommendedLength = ideas.content_length[0].items.competitors_length;
-            const relatedWords = ideas.related[0].items.slice(0, 5);
-            const backlinks = ideas.backlinks[0].items.slice(0, 5);
-            const rivals = Object.keys(serps).reduce((acc, keyword) => {
-              serps[keyword].forEach((rival) => {
-                acc.push(rival.url);
-              });
-              return acc;
-            }, []).slice(0, 5);
-
-            debug('the recommended length is:', recommendedLength);
-            debug('the related words are:', relatedWords.join(', '));
-            debug('potential backlink providers: ', backlinks.join(', '));
-            debug('your rivals are: ', rivals.join(', '));
-          } catch (err4) {
-            throw err4;
-          }
-        });
-      }
-    } catch (err2) {
-      throw err2;
+function ping(options = {}, callNum = 1) {
+  debug('ping.');
+  const callLimit = options.callLimit || Infinity;
+  return new Promise(async (resolve) => {
+    const state = await exec(pingUrl);
+    if (state.status === 'RUNNING' && callNum < callLimit) {
+      await sleep(1000);
+      await ping({
+        ...options,
+        originalResolve: options.originalResolve || resolve,
+      }, callNum + 1);
+    } else if (options.originalResolve) {
+      debug('collecting ideas is done.');
+      options.originalResolve(state);
     }
   });
 }
 
-debug('start collectig ideas.');
-exec([
+async function getResult(processId) {
+  debug('start fetching the final result');
+  const { ideas, serps } = await exec(finalUrl(processId));
+  debug('got the final result');
+  const recommendedLength = ideas.content_length[0].items.competitors_length;
+  const relatedWords = ideas.related[0].items.slice(0, 5);
+  const backlinks = ideas.backlinks[0].items.slice(0, 5);
+  const rivals = Object.keys(serps).reduce((acc, keyword) => {
+    serps[keyword].forEach((rival) => {
+      acc.push(rival.url);
+    });
+    return acc;
+  }, []).slice(0, 5);
+  return {
+    recommendedLength,
+    relatedWords,
+    backlinks,
+    rivals,
+  };
+}
 
-  'curl -H "Content-Type: application/json"',
-  `${initUrl}?key=${apiKey}`,
-  `-d '${JSON.stringify(params)}'`,
+(async function run() {
+  // 1. start the collecting process
+  await launch();
 
-].join(' '), (err) => {
-  if (err) {
-    throw err;
-  }
+  // 2. ping to check if the process is done
+  const { id: processId } = await ping();
 
-  ping();
-});
+  // 3. collect the final result by the process id
+  const result = await getResult(processId);
+
+  debug('done %o', JSON.stringify(result));
+}());
