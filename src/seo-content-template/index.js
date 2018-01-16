@@ -1,7 +1,6 @@
-/* eslint-disable no-console */
-
 require('dotenv').config();
 const { exec } = require('child_process');
+const debug = require('debug')('seo-content-template');
 
 const initUrl = 'https://www.semrush.com/seoideas/api/sct/checks';
 const pingUrl = 'https://www.semrush.com/seoideas/api/sct/checks/status';
@@ -34,12 +33,14 @@ function ping() {
       const response = JSON.parse(data);
       if (response.status === 'RUNNING') {
         // try it with async/await and while loop
+        debug('ping.');
         ping();
       } else {
-        console.log('Collecting ideas is done.');
+        debug('collecting ideas is done.');
         const pid = response.id;
 
         /* Get the ideas finally  */
+        debug('get the final result');
         exec([
           'curl -H "Content-Type: application/json"',
           `https://www.semrush.com/seoideas/api/sct/checks/${pid}/ideas?key=${apiKey}`,
@@ -47,6 +48,7 @@ function ping() {
           if (err3) {
             throw err3;
           }
+          debug('got the final result');
           try {
             const { ideas, serps } = JSON.parse(data2);
             const recommendedLength = ideas.content_length[0].items.competitors_length;
@@ -59,10 +61,10 @@ function ping() {
               return acc;
             }, []).slice(0, 5);
 
-            console.log('the recommended length is:', recommendedLength);
-            console.log('the related words are:', relatedWords.join(', '));
-            console.log('potential backlink providers: ', backlinks.join(', '));
-            console.log('your rivals are: ', rivals.join(', '));
+            debug('the recommended length is:', recommendedLength);
+            debug('the related words are:', relatedWords.join(', '));
+            debug('potential backlink providers: ', backlinks.join(', '));
+            debug('your rivals are: ', rivals.join(', '));
           } catch (err4) {
             throw err4;
           }
@@ -74,6 +76,7 @@ function ping() {
   });
 }
 
+debug('start collectig ideas.');
 exec([
 
   'curl -H "Content-Type: application/json"',

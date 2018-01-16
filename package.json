@@ -16,6 +16,7 @@
     "eslint-plugin-import": "^2.8.0"
   },
   "dependencies": {
+    "debug": "^3.1.0",
     "dotenv": "^4.0.0"
   }
 }
