@@ -8,10 +8,10 @@ const initUrl = baseUrl;
 const pingUrl = `${baseUrl}/status`;
 const finalUrl = processId => `${baseUrl}/${processId}/ideas`;
 
-function launch() {
+function launch(keywords) {
   debug('start collectig ideas.');
   return exec(initUrl, {
-    keywords: (process.argv[2] || '').split(',').map(k => k.trim().split('+').join(' ')),
+    keywords,
     language: 'en',
     location: 'United States',
     country: 'us',
@@ -58,9 +58,9 @@ async function getResult(processId) {
   };
 }
 
-(async function run() {
+module.exports.collect = async function (keywords) {
   // 1. start the collecting process
-  await launch();
+  await launch(keywords);
 
   // 2. ping to check if the process is done
   const { id: processId } = await ping();
@@ -69,4 +69,4 @@ async function getResult(processId) {
   const result = await getResult(processId);
 
   debug('done %o', JSON.stringify(result));
-}());
+}
